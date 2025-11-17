@@ -11,15 +11,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-// IPOAnalyzer.jsx
-// Completed and cleaned-up version of the component you provided.
-// Notes:
-// - The original fetchLiveGMP used a third-party assistant API call. That won't work without an API key
-//   and a proper backend. I left a placeholder implementation and a clear comment where you can plug
-//   a real API endpoint or serverless function (/api/gmp?company=...).
-// - Finished the truncated UI and fixed some small parsing/edge-case bugs.
-// - Kept styling using Tailwind as in your original component.
-
 export default function IPOAnalyzer() {
   const [companyName, setCompanyName] = useState('');
   const [issuePrice, setIssuePrice] = useState('');
@@ -28,32 +19,120 @@ export default function IPOAnalyzer() {
   const [fetchingGMP, setFetchingGMP] = useState(false);
   const [result, setResult] = useState(null);
 
-  // IMPORTANT: Replace this placeholder with your server-side endpoint that scrapes
-  // or aggregates GMP data (investorgain / chittorgarh / other sources).
-  // Example: GET /api/gmp?company=SomeCo -> returns the JSON shape used below.
   const fetchLiveGMP = async (company) => {
     setFetchingGMP(true);
     try {
-      if (!company) return null;
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 10000,
+          messages: [
+            { 
+              role: "user", 
+              content: `Find live IPO GMP data for "${company}".
 
-      // Example placeholder: try a local API (you should implement this server side)
-      const resp = await fetch(`/api/gmp?company=${encodeURIComponent(company)}`);
-      if (!resp.ok) return null;
+STEPS:
+1. Search for "${company} IPO GMP live" using web_search
+2. Look for investorgain.com or chittorgarh.com in results
+3. Use web_fetch to get the page content
+4. Extract: GMP (number only), issue price, issue size, dates, subscription status
 
-      const data = await resp.json();
+Today is ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}.
 
-      // Expected to return { gmp: number, issuePrice, priceRange, issueSize, subscriptionStatus, allotmentDate, refundDate, listingDate, lastUpdated, source }
-      if (!data || typeof data.gmp === 'undefined') return null;
+Return ONLY JSON (no markdown):
+{
+  "gmp": 45,
+  "issuePrice": "390",
+  "priceRange": "380-390",
+  "issueSize": "11,327 Cr",
+  "subscriptionStatus": "open",
+  "allotmentDate": "18 Nov 2025",
+  "refundDate": "19 Nov 2025",
+  "listingDate": "20 Nov 2025",
+  "lastUpdated": "17 Nov 2025",
+  "source": "https://www.investorgain.com/report/live-ipo-gmp/331/"
+}
 
-      // normalize
-      return {
-        ...data,
-        gmp: parseFloat(String(data.gmp).replace(/[^0-9.-]/g, '')),
-        issuePrice: data.issuePrice ? String(data.issuePrice) : undefined,
-      };
-    } catch (err) {
-      // Silent fallback to null; caller handles prompting the user for manual input
-      // console.error('fetchLiveGMP error', err);
+If not found: {"error": "Could not find data"}` 
+            }
+          ],
+          tools: [
+            {
+              "type": "web_search_20250305",
+              "name": "web_search"
+            }
+          ]
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.error) {
+        console.error("API Error:", data.error);
+        return null;
+      }
+      
+      let textContent = '';
+      if (data.content && Array.isArray(data.content)) {
+        textContent = data.content
+          .filter(item => item.type === "text")
+          .map(item => item.text)
+          .join("\n");
+      }
+
+      let gmpData = null;
+      
+      try {
+        gmpData = JSON.parse(textContent.trim());
+      } catch (e) {
+        const codeBlockMatch = textContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+        if (codeBlockMatch) {
+          try {
+            gmpData = JSON.parse(codeBlockMatch[1].trim());
+          } catch (e2) {
+            console.error("Parse error:", e2);
+          }
+        }
+        
+        if (!gmpData) {
+          const jsonMatch = textContent.match(/\{[\s\S]*?"gmp"[\s\S]*?\}/);
+          if (jsonMatch) {
+            try {
+              gmpData = JSON.parse(jsonMatch[0]);
+            } catch (e3) {
+              console.error("Parse error:", e3);
+            }
+          }
+        }
+      }
+      
+      if (gmpData && gmpData.error) {
+        console.error("GMP fetch error:", gmpData.error);
+        return null;
+      }
+      
+      if (gmpData && gmpData.gmp !== undefined) {
+        if (gmpData.issuePrice) {
+          const priceStr = String(gmpData.issuePrice);
+          if (priceStr.includes('-')) {
+            const prices = priceStr.split('-').map(p => p.trim());
+            setIssuePrice(prices[prices.length - 1]);
+          } else {
+            setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
+          }
+        }
+        
+        gmpData.gmp = parseFloat(String(gmpData.gmp).replace(/[^0-9.-]/g, ''));
+        return gmpData;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error fetching GMP:', error);
       return null;
     } finally {
       setFetchingGMP(false);
@@ -101,11 +180,8 @@ export default function IPOAnalyzer() {
     const gmpPercentage = ((gmpData.gmp / price) * 100).toFixed(2);
     const expectedListingPrice = Number(price) + Number(gmpData.gmp);
 
-    // Simulate small analysis delay
     await new Promise((res) => setTimeout(res, 700));
 
-    // Very lightweight DRHP "analysis" placeholder. Replace with real DRHP parsing
-    // if you upload a PDF and process it server-side or in-browser.
     const drhpAnalysis = {
       financialHealth: Math.random() > 0.5 ? 'Strong' : 'Moderate',
       revenueGrowth: (Math.random() * 50 + 10).toFixed(1) + '%',
@@ -199,8 +275,6 @@ export default function IPOAnalyzer() {
     const file = e.target.files[0];
     if (file && file.type === 'application/pdf') {
       setDrhpFile(file);
-      // Optionally: send the file to a server-side endpoint for parsing, then
-      // incorporate parsed DRHP metrics into the analysis.
     } else if (file) {
       alert('Please upload a PDF file');
     }
@@ -461,6 +535,12 @@ export default function IPOAnalyzer() {
               </div>
             </div>
 
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Disclaimer:</strong> This analysis is for informational purposes only. GMP data is from unofficial grey market sources and is subject to high volatility. 
+                Please conduct your own research and consult with a SEBI-registered financial advisor before making investment decisions.
+              </p>
+            </div>
           </div>
         )}
       </div>

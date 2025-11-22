@@ -1,0 +1,9 @@
+# Copy this content to server/.env file
+# Backend Production Configuration
+
+PORT=3000
+
+# Optional: Anthropic API Key (for enhanced data fetching)
+# Get your API key from: https://console.anthropic.com/
+# ANTHROPIC_API_KEY=your-anthropic-api-key-here
+

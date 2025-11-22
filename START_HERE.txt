@@ -1,0 +1,27 @@
+========================================
+IPO ANALYZER - START HERE
+========================================
+
+You've installed Node.js! Now follow these steps:
+
+1. CLOSE THIS TERMINAL WINDOW COMPLETELY
+   (This is required for Node.js to be recognized)
+
+2. OPEN A NEW TERMINAL/PowerShell WINDOW
+
+3. Navigate to this folder:
+   cd "C:\Users\Admin\OneDrive\Desktop\RVCE25BCS817\IPO"
+
+4. Run these commands:
+   npm install
+   npm run dev
+
+5. Open your browser to http://localhost:5173
+
+========================================
+OR use the setup script:
+   .\setup.bat
+========================================
+
+For detailed instructions, see QUICK_START.md
+

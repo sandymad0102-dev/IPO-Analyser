@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -8,7 +8,10 @@ import {
   Upload,
   Loader2,
   Search,
-  RefreshCw
+  RefreshCw,
+  Moon,
+  Sun,
+  Sparkles
 } from 'lucide-react';
 
 export default function IPOAnalyzer() {
@@ -18,119 +21,150 @@ export default function IPOAnalyzer() {
   const [analyzing, setAnalyzing] = useState(false);
   const [fetchingGMP, setFetchingGMP] = useState(false);
   const [result, setResult] = useState(null);
+  const [darkMode, setDarkMode] = useState(() => {
+    // Check localStorage or system preference
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  // Update dark mode class on body
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
 
   const fetchLiveGMP = async (company) => {
     setFetchingGMP(true);
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 10000,
-          messages: [
-            { 
-              role: "user", 
-              content: `Find live IPO GMP data for "${company}".
+      // Check if we're in production mode with API endpoint configured
+      const apiMode = import.meta.env.VITE_APP_MODE || 'demo';
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
-STEPS:
-1. Search for "${company} IPO GMP live" using web_search
-2. Look for investorgain.com or chittorgarh.com in results
-3. Use web_fetch to get the page content
-4. Extract: GMP (number only), issue price, issue size, dates, subscription status
+      // PRODUCTION MODE: Call backend API
+      if (apiMode === 'production' && apiBaseUrl) {
+        try {
+          const response = await fetch(`${apiBaseUrl}/gmp-data`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ company: company }),
+          });
 
-Today is ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}.
-
-Return ONLY JSON (no markdown):
-{
-  "gmp": 45,
-  "issuePrice": "390",
-  "priceRange": "380-390",
-  "issueSize": "11,327 Cr",
-  "subscriptionStatus": "open",
-  "allotmentDate": "18 Nov 2025",
-  "refundDate": "19 Nov 2025",
-  "listingDate": "20 Nov 2025",
-  "lastUpdated": "17 Nov 2025",
-  "source": "https://www.investorgain.com/report/live-ipo-gmp/331/"
-}
-
-If not found: {"error": "Could not find data"}` 
-            }
-          ],
-          tools: [
-            {
-              "type": "web_search_20250305",
-              "name": "web_search"
-            }
-          ]
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.error) {
-        console.error("API Error:", data.error);
-        return null;
-      }
-      
-      let textContent = '';
-      if (data.content && Array.isArray(data.content)) {
-        textContent = data.content
-          .filter(item => item.type === "text")
-          .map(item => item.text)
-          .join("\n");
-      }
-
-      let gmpData = null;
-      
-      try {
-        gmpData = JSON.parse(textContent.trim());
-      } catch (e) {
-        const codeBlockMatch = textContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-        if (codeBlockMatch) {
-          try {
-            gmpData = JSON.parse(codeBlockMatch[1].trim());
-          } catch (e2) {
-            console.error("Parse error:", e2);
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
           }
-        }
-        
-        if (!gmpData) {
-          const jsonMatch = textContent.match(/\{[\s\S]*?"gmp"[\s\S]*?\}/);
-          if (jsonMatch) {
-            try {
-              gmpData = JSON.parse(jsonMatch[0]);
-            } catch (e3) {
-              console.error("Parse error:", e3);
+
+          const data = await response.json();
+          
+          if (data.error) {
+            console.error("API Error:", data.error);
+            // Fall back to demo mode on error
+          } else if (data.gmp !== undefined) {
+            if (data.issuePrice) {
+              const priceStr = String(data.issuePrice);
+              if (priceStr.includes('-')) {
+                const prices = priceStr.split('-').map(p => p.trim());
+                setIssuePrice(prices[prices.length - 1]);
+              } else {
+                setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
+              }
             }
+            
+            data.gmp = parseFloat(String(data.gmp).replace(/[^0-9.-]/g, ''));
+            return data;
           }
+        } catch (apiError) {
+          console.error('API call failed, falling back to demo mode:', apiError);
+          // Fall through to demo mode
         }
       }
+
+      // DEMO MODE: Mock data based on company name
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      if (gmpData && gmpData.error) {
-        console.error("GMP fetch error:", gmpData.error);
-        return null;
+      const companyLower = company.toLowerCase();
+      let mockData = null;
+
+      // Generate realistic mock data based on company name patterns
+      if (companyLower.includes('swiggy') || companyLower.includes('zomato')) {
+        mockData = {
+          gmp: 45,
+          issuePrice: "390",
+          priceRange: "380-390",
+          issueSize: "11,327 Cr",
+          subscriptionStatus: "open",
+          allotmentDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          refundDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          listingDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          source: "Demo Mode - Mock Data"
+        };
+      } else if (companyLower.includes('hyundai') || companyLower.includes('motor')) {
+        mockData = {
+          gmp: 28,
+          issuePrice: "1250",
+          priceRange: "1200-1250",
+          issueSize: "25,000 Cr",
+          subscriptionStatus: "upcoming",
+          allotmentDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          refundDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          listingDate: new Date(Date.now() + 17 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          source: "Demo Mode - Mock Data"
+        };
+      } else if (companyLower.includes('ntpc') || companyLower.includes('green')) {
+        mockData = {
+          gmp: 12,
+          issuePrice: "85",
+          priceRange: "80-85",
+          issueSize: "5,500 Cr",
+          subscriptionStatus: "open",
+          allotmentDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          refundDate: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          listingDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          source: "Demo Mode - Mock Data"
+        };
+      } else {
+        // Generic mock data for unknown companies
+        const baseGMP = Math.floor(Math.random() * 50) + 5;
+        const basePrice = Math.floor(Math.random() * 500) + 100;
+        mockData = {
+          gmp: baseGMP,
+          issuePrice: String(basePrice),
+          priceRange: `${basePrice - 10}-${basePrice}`,
+          issueSize: `${(Math.random() * 10 + 2).toFixed(1)} Cr`,
+          subscriptionStatus: Math.random() > 0.5 ? "open" : "upcoming",
+          allotmentDate: new Date(Date.now() + (Math.floor(Math.random() * 10) + 5) * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          refundDate: new Date(Date.now() + (Math.floor(Math.random() * 10) + 6) * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          listingDate: new Date(Date.now() + (Math.floor(Math.random() * 10) + 8) * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          source: "Demo Mode - Mock Data"
+        };
       }
-      
-      if (gmpData && gmpData.gmp !== undefined) {
-        if (gmpData.issuePrice) {
-          const priceStr = String(gmpData.issuePrice);
-          if (priceStr.includes('-')) {
-            const prices = priceStr.split('-').map(p => p.trim());
-            setIssuePrice(prices[prices.length - 1]);
-          } else {
-            setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
-          }
+
+      if (mockData && mockData.issuePrice) {
+        const priceStr = String(mockData.issuePrice);
+        if (priceStr.includes('-')) {
+          const prices = priceStr.split('-').map(p => p.trim());
+          setIssuePrice(prices[prices.length - 1]);
+        } else {
+          setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
         }
-        
-        gmpData.gmp = parseFloat(String(gmpData.gmp).replace(/[^0-9.-]/g, ''));
-        return gmpData;
       }
       
-      return null;
+      mockData.gmp = parseFloat(String(mockData.gmp).replace(/[^0-9.-]/g, ''));
+      return mockData;
     } catch (error) {
       console.error('Error fetching GMP:', error);
       return null;
@@ -140,7 +174,7 @@ If not found: {"error": "Could not find data"}`
   };
 
   const analyzeIPO = async () => {
-    if (!companyName) {
+    if (!companyName.trim()) {
       alert('Please enter company name');
       return;
     }
@@ -148,13 +182,14 @@ If not found: {"error": "Could not find data"}`
     setAnalyzing(true);
     setResult(null);
 
-    const liveGMPData = await fetchLiveGMP(companyName);
+    try {
+      const liveGMPData = await fetchLiveGMP(companyName);
 
-    if (!liveGMPData && !issuePrice) {
-      alert('Could not fetch live data. Please enter the issue price manually and try again.');
-      setAnalyzing(false);
-      return;
-    }
+      if (!liveGMPData && !issuePrice) {
+        alert('Could not fetch data. Please enter the issue price manually and try again.');
+        setAnalyzing(false);
+        return;
+      }
 
     const price = parseFloat(issuePrice) || (liveGMPData?.issuePrice ? parseFloat(String(liveGMPData.issuePrice).replace(/[^0-9.]/g, '')) : 0);
 
@@ -246,29 +281,33 @@ If not found: {"error": "Could not find data"}`
     reasons.push(hasLowDebt ? `Low debt-to-equity ratio (${drhpAnalysis.debtToEquity}) - Healthy balance sheet` : `High debt-to-equity ratio (${drhpAnalysis.debtToEquity}) - Leverage concerns`);
     if (hasPositiveOutlook) reasons.push('Positive industry outlook - Sector tailwinds favorable');
 
-    setResult({
-      verdict,
-      verdictReasoning,
-      gmpData: {
-        gmp: Number(gmpData.gmp),
-        issuePrice: Number(price),
-        priceRange: gmpData.priceRange || String(price),
-        issueSize: gmpData.issueSize || 'Not Available',
-        gmpPercentage,
-        expectedListingPrice,
-        lastUpdated: gmpData.lastUpdated,
-        source: gmpData.source,
-        subscriptionStatus: gmpData.subscriptionStatus || 'unknown',
-        allotmentDate: gmpData.allotmentDate || 'Not Available',
-        refundDate: gmpData.refundDate || 'Not Available',
-        listingDate: gmpData.listingDate || 'Not Available'
-      },
-      drhpAnalysis,
-      reasons,
-      confidence: Math.floor(Math.random() * 30 + 70),
-    });
-
-    setAnalyzing(false);
+      setResult({
+        verdict,
+        verdictReasoning,
+        gmpData: {
+          gmp: Number(gmpData.gmp),
+          issuePrice: Number(price),
+          priceRange: gmpData.priceRange || String(price),
+          issueSize: gmpData.issueSize || 'Not Available',
+          gmpPercentage,
+          expectedListingPrice,
+          lastUpdated: gmpData.lastUpdated,
+          source: gmpData.source,
+          subscriptionStatus: gmpData.subscriptionStatus || 'unknown',
+          allotmentDate: gmpData.allotmentDate || 'Not Available',
+          refundDate: gmpData.refundDate || 'Not Available',
+          listingDate: gmpData.listingDate || 'Not Available'
+        },
+        drhpAnalysis,
+        reasons,
+        confidence: Math.floor(Math.random() * 30 + 70),
+      });
+    } catch (error) {
+      console.error('Error analyzing IPO:', error);
+      alert('An error occurred while analyzing the IPO. Please try again.');
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleFileUpload = (e) => {
@@ -317,68 +356,112 @@ If not found: {"error": "Could not find data"}`
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-indigo-900 mb-2">IPO Analyzer</h1>
-          <p className="text-gray-600">Live GMP Analysis with DRHP Insights</p>
-          <p className="text-sm text-gray-500 mt-1">Powered by Real-time Data</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-6 transition-colors duration-300">
+      <div className="max-w-6xl mx-auto">
+        {/* Header with Theme Toggle */}
+        <div className="flex justify-between items-start mb-8">
+          <div className="flex-1"></div>
+          <div className="text-center flex-1">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <Sparkles className="h-8 w-8 text-indigo-600 dark:text-indigo-400 animate-pulse-slow" />
+              <h1 className="text-5xl font-extrabold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400 bg-clip-text text-transparent animate-fade-in">
+                IPO Analyzer
+              </h1>
+              <Sparkles className="h-8 w-8 text-indigo-600 dark:text-indigo-400 animate-pulse-slow" />
+            </div>
+            <p className="text-gray-700 dark:text-gray-300 text-lg font-medium">Live GMP Analysis with DRHP Insights</p>
+            {(() => {
+              const apiMode = import.meta.env.VITE_APP_MODE || 'demo';
+              const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+              const isProduction = apiMode === 'production' && apiBaseUrl;
+              
+              return isProduction ? (
+                <div className="mt-4 inline-block bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-300 dark:border-green-700 rounded-xl px-6 py-3 shadow-md animate-slide-up">
+                  <p className="text-sm text-green-800 dark:text-green-300 font-semibold">✅ Production Mode - Using Real API</p>
+                  <p className="text-xs text-green-700 dark:text-green-400 mt-1">Connected to: {apiBaseUrl}</p>
+                </div>
+              ) : (
+                <div className="mt-4 inline-block bg-gradient-to-r from-yellow-100 to-amber-100 dark:from-yellow-900/30 dark:to-amber-900/30 border-2 border-yellow-300 dark:border-yellow-700 rounded-xl px-6 py-3 shadow-md animate-slide-up">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-300 font-semibold">⚠️ Demo Mode - Using Mock Data</p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">Set VITE_APP_MODE=production and VITE_API_BASE_URL to use real API</p>
+                </div>
+              );
+            })()}
+          </div>
+          <div className="flex-1 flex justify-end">
+            <button
+              onClick={toggleDarkMode}
+              className="p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 border border-gray-200 dark:border-gray-700 group"
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? (
+                <Sun className="h-6 w-6 text-yellow-500 group-hover:rotate-180 transition-transform duration-500" />
+              ) : (
+                <Moon className="h-6 w-6 text-indigo-600 group-hover:rotate-12 transition-transform duration-500" />
+              )}
+            </button>
+          </div>
+        </div>
 
-          {result && (
-            <div className="mt-4 bg-white rounded-lg shadow-md p-4 inline-block">
-              <div className="flex items-center gap-6">
+        {result && (
+          <div className="text-center mb-6">
+            <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 inline-block border border-gray-200 dark:border-gray-700 animate-slide-up backdrop-blur-sm">
+              <div className="flex items-center gap-8">
                 <div className="text-left">
-                  <p className="text-xs text-gray-500 mb-1">Company</p>
-                  <p className="text-lg font-bold text-indigo-900">{companyName}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wide">Company</p>
+                  <p className="text-xl font-bold text-indigo-900 dark:text-indigo-300">{companyName}</p>
                 </div>
-                <div className="text-left border-l border-gray-300 pl-6">
-                  <p className="text-xs text-gray-500 mb-1">Issue Size</p>
-                  <p className="text-lg font-bold text-green-600">Rs {result.gmpData.issueSize}</p>
+                <div className="text-left border-l-2 border-gray-300 dark:border-gray-600 pl-8">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wide">Issue Size</p>
+                  <p className="text-xl font-bold text-green-600 dark:text-green-400">Rs {result.gmpData.issueSize}</p>
                 </div>
-                <div className="text-left border-l border-gray-300 pl-6">
-                  <p className="text-xs text-gray-500 mb-1">Price Band</p>
-                  <p className="text-lg font-bold text-blue-600">Rs {result.gmpData.priceRange}</p>
+                <div className="text-left border-l-2 border-gray-300 dark:border-gray-600 pl-8">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wide">Price Band</p>
+                  <p className="text-xl font-bold text-blue-600 dark:text-blue-400">Rs {result.gmpData.priceRange}</p>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-6">IPO Details</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 mb-6 border border-gray-200 dark:border-gray-700 backdrop-blur-sm animate-fade-in">
+          <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6 flex items-center gap-3">
+            <div className="h-1 w-1 rounded-full bg-indigo-600 dark:bg-indigo-400"></div>
+            IPO Details
+          </h2>
 
           <div className="space-y-4 mb-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Company Name *</label>
               <input
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="e.g., Swiggy, Hyundai Motor India, NTPC Green Energy"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-5 py-4 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 transition-all duration-200 shadow-sm hover:shadow-md"
               />
-              <p className="text-xs text-gray-500 mt-1">Enter company name - Issue price will be fetched automatically</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Enter company name - Issue price will be fetched automatically</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Issue Price (Rs)</label>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Issue Price (Rs)</label>
               <input
                 type="text"
                 value={issuePrice}
                 onChange={(e) => setIssuePrice(e.target.value)}
                 placeholder="Auto-filled or enter manually"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-5 py-4 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 transition-all duration-200 shadow-sm hover:shadow-md"
               />
-              <p className="text-xs text-gray-500 mt-1">Will be auto-filled when fetching GMP data</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Will be auto-filled when fetching GMP data</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Upload DRHP (Optional)</label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Upload DRHP (Optional)</label>
+              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-indigo-500 dark:hover:border-indigo-400 transition-all duration-300 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer group">
                 <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" id="drhp-upload" />
                 <label htmlFor="drhp-upload" className="cursor-pointer">
-                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                  <p className="text-sm text-gray-600">{drhpFile ? drhpFile.name : 'Click to upload DRHP PDF'}</p>
+                  <Upload className="mx-auto h-14 w-14 text-gray-400 dark:text-gray-500 mb-3 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-300" />
+                  <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{drhpFile ? drhpFile.name : 'Click to upload DRHP PDF'}</p>
                 </label>
               </div>
             </div>
@@ -387,107 +470,119 @@ If not found: {"error": "Could not find data"}`
           <button
             onClick={analyzeIPO}
             disabled={analyzing || fetchingGMP}
-            className="w-full bg-indigo-600 text-white py-4 rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:bg-gray-400 flex items-center justify-center gap-2"
+            className="w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-500 dark:via-purple-500 dark:to-pink-500 text-white py-5 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3 group"
           >
             {analyzing || fetchingGMP ? (
               <>
-                <Loader2 className="animate-spin" />
-                {fetchingGMP ? 'Fetching Live GMP Data...' : 'Analyzing IPO...'}
+                <Loader2 className="animate-spin h-6 w-6" />
+                <span>{fetchingGMP ? 'Fetching Live GMP Data...' : 'Analyzing IPO...'}</span>
               </>
             ) : (
               <>
-                <Search />
-                Analyze IPO with Live GMP
+                <Search className="h-6 w-6 group-hover:scale-110 transition-transform duration-300" />
+                <span>Analyze IPO with Live GMP</span>
               </>
             )}
           </button>
 
-          <p className="text-xs text-gray-500 mt-3 text-center">LIVE: Fetches current GMP, issue price, and important dates</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 text-center">DEMO: Simulates GMP data fetch. Configure backend API for live data.</p>
         </div>
 
         {result && (
           <div className="space-y-6">
-            <div className={`rounded-xl shadow-lg p-8 ${
+            <div className={`rounded-2xl shadow-2xl p-8 animate-slide-up ${
               result.verdict === 'APPLY' 
-                ? 'bg-gradient-to-r from-green-500 to-emerald-600'
+                ? 'bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 dark:from-green-600 dark:via-emerald-600 dark:to-teal-600'
                 : result.verdict === 'CAUTION'
-                ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                : 'bg-gradient-to-r from-red-500 to-rose-600'
+                ? 'bg-gradient-to-r from-yellow-500 via-orange-500 to-amber-500 dark:from-yellow-600 dark:via-orange-600 dark:to-amber-600'
+                : 'bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 dark:from-red-600 dark:via-rose-600 dark:to-pink-600'
             }`}>
               <div className="flex items-center justify-between text-white">
                 <div className="flex-1">
-                  <h2 className="text-3xl font-bold mb-2">{result.verdict === 'APPLY' ? 'APPLY' : result.verdict === 'CAUTION' ? 'APPLY WITH CAUTION' : 'AVOID'}</h2>
-                  <p className="text-white/90 mb-3">Confidence: {result.confidence}%</p>
-                  <p className="text-sm text-white/95 bg-white/20 rounded-lg p-3">{result.verdictReasoning}</p>
+                  <h2 className="text-4xl font-extrabold mb-3 drop-shadow-lg">{result.verdict === 'APPLY' ? 'APPLY' : result.verdict === 'CAUTION' ? 'APPLY WITH CAUTION' : 'AVOID'}</h2>
+                  <div className="mb-4">
+                    <span className="inline-block bg-white/30 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-semibold">
+                      Confidence: {result.confidence}%
+                    </span>
+                  </div>
+                  <p className="text-base text-white/95 bg-white/20 backdrop-blur-sm rounded-xl p-4 border border-white/30">{result.verdictReasoning}</p>
                 </div>
-                {result.verdict === 'APPLY' ? (
-                  <CheckCircle className="h-16 w-16 ml-4" />
-                ) : result.verdict === 'CAUTION' ? (
-                  <AlertCircle className="h-16 w-16 ml-4" />
-                ) : (
-                  <XCircle className="h-16 w-16 ml-4" />
-                )}
+                <div className="ml-6">
+                  {result.verdict === 'APPLY' ? (
+                    <CheckCircle className="h-20 w-20 drop-shadow-lg animate-bounce-slow" />
+                  ) : result.verdict === 'CAUTION' ? (
+                    <AlertCircle className="h-20 w-20 drop-shadow-lg animate-pulse-slow" />
+                  ) : (
+                    <XCircle className="h-20 w-20 drop-shadow-lg animate-pulse-slow" />
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="text-xl font-semibold text-gray-800 mb-4">Important Dates</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700 animate-fade-in">
+              <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6 flex items-center gap-2">
+                <div className="h-1 w-1 rounded-full bg-indigo-600 dark:bg-indigo-400"></div>
+                Important Dates
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Allotment Date</p>
-                  <p className="text-lg font-semibold text-blue-700">{result.gmpData.allotmentDate}</p>
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-2 border-blue-200 dark:border-blue-700 rounded-xl p-5 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 font-semibold uppercase tracking-wide">Allotment Date</p>
+                  <p className="text-xl font-bold text-blue-700 dark:text-blue-300">{result.gmpData.allotmentDate}</p>
                 </div>
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Refund Initiation</p>
-                  <p className="text-lg font-semibold text-purple-700">{result.gmpData.refundDate}</p>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 border-2 border-purple-200 dark:border-purple-700 rounded-xl p-5 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 font-semibold uppercase tracking-wide">Refund Initiation</p>
+                  <p className="text-xl font-bold text-purple-700 dark:text-purple-300">{result.gmpData.refundDate}</p>
                 </div>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Listing Date</p>
-                  <p className="text-lg font-semibold text-green-700">{result.gmpData.listingDate}</p>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 border-2 border-green-200 dark:border-green-700 rounded-xl p-5 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 font-semibold uppercase tracking-wide">Listing Date</p>
+                  <p className="text-xl font-bold text-green-700 dark:text-green-300">{result.gmpData.listingDate}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2"><TrendingUp className="text-indigo-600" />Grey Market Premium (GMP)</h3>
-                <button onClick={refreshGMP} disabled={fetchingGMP} className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors disabled:opacity-50">
-                  <RefreshCw className={`h-4 w-4 ${fetchingGMP ? 'animate-spin' : ''}`} />
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700 animate-fade-in">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-3">
+                  <TrendingUp className="text-indigo-600 dark:text-indigo-400 h-7 w-7" />
+                  <span>Grey Market Premium (GMP)</span>
+                </h3>
+                <button onClick={refreshGMP} disabled={fetchingGMP} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-all duration-300 disabled:opacity-50 hover:scale-105 active:scale-95 font-semibold shadow-md">
+                  <RefreshCw className={`h-5 w-5 ${fetchingGMP ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-indigo-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Price Range</p>
-                  <p className="text-xl font-bold text-indigo-600">Rs {result.gmpData.priceRange}</p>
+                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 rounded-xl p-5 border-2 border-indigo-200 dark:border-indigo-700 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 font-semibold uppercase tracking-wide">Price Range</p>
+                  <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">Rs {result.gmpData.priceRange}</p>
                 </div>
-                <div className={`rounded-lg p-4 ${result.gmpData.gmp >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                  <p className="text-sm text-gray-600 mb-1">GMP</p>
-                  <p className={`text-2xl font-bold ${result.gmpData.gmp >= 0 ? 'text-green-600' : 'text-red-600'}`}>Rs {formatNumber(result.gmpData.gmp)}</p>
+                <div className={`rounded-xl p-5 border-2 hover:shadow-lg transition-all duration-300 hover:scale-105 ${result.gmpData.gmp >= 0 ? 'bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 border-green-200 dark:border-green-700' : 'bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-red-200 dark:border-red-700'}`}>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 font-semibold uppercase tracking-wide">GMP</p>
+                  <p className={`text-2xl font-bold ${result.gmpData.gmp >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>Rs {formatNumber(result.gmpData.gmp)}</p>
                 </div>
-                <div className={`rounded-lg p-4 ${parseFloat(result.gmpData.gmpPercentage) >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                  <p className="text-sm text-gray-600 mb-1">GMP %</p>
-                  <p className={`text-2xl font-bold ${parseFloat(result.gmpData.gmpPercentage) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{result.gmpData.gmpPercentage}%</p>
+                <div className={`rounded-xl p-5 border-2 hover:shadow-lg transition-all duration-300 hover:scale-105 ${parseFloat(result.gmpData.gmpPercentage) >= 0 ? 'bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 border-green-200 dark:border-green-700' : 'bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-red-200 dark:border-red-700'}`}>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 font-semibold uppercase tracking-wide">GMP %</p>
+                  <p className={`text-2xl font-bold ${parseFloat(result.gmpData.gmpPercentage) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{result.gmpData.gmpPercentage}%</p>
                 </div>
-                <div className="bg-indigo-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Expected Listing</p>
-                  <p className="text-xl font-bold text-indigo-600">Rs {Number(result.gmpData.expectedListingPrice).toFixed(2)}</p>
+                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 rounded-xl p-5 border-2 border-indigo-200 dark:border-indigo-700 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 font-semibold uppercase tracking-wide">Expected Listing</p>
+                  <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">Rs {Number(result.gmpData.expectedListingPrice).toFixed(2)}</p>
                 </div>
               </div>
 
-              <div className="mt-4 space-y-2">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="mt-6 space-y-3">
+                <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 border-2 border-blue-200 dark:border-blue-700 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-blue-800"><strong>Source:</strong> {result.gmpData.source}</p>
-                      <p className="text-xs text-blue-600 mt-1">Last Updated: {result.gmpData.lastUpdated}</p>
+                      <p className="text-sm text-blue-800 dark:text-blue-300 font-semibold"><strong>Source:</strong> {result.gmpData.source}</p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Last Updated: {result.gmpData.lastUpdated}</p>
                     </div>
                     {result.gmpData.subscriptionStatus !== 'unknown' && (
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        result.gmpData.subscriptionStatus === 'open' ? 'bg-green-100 text-green-700' :
-                        result.gmpData.subscriptionStatus === 'upcoming' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-700'
+                      <span className={`px-4 py-2 rounded-full text-xs font-bold shadow-md ${
+                        result.gmpData.subscriptionStatus === 'open' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' :
+                        result.gmpData.subscriptionStatus === 'upcoming' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' :
+                        'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                       }`}>
                         {result.gmpData.subscriptionStatus.toUpperCase()}
                       </span>
@@ -496,48 +591,54 @@ If not found: {"error": "Could not find data"}`
                 </div>
 
                 {parseFloat(result.gmpData.gmpPercentage) >= 10 ? (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-start gap-2">
-                    <CheckCircle className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
-                    <p className="text-sm text-green-800">GMP above 10% - Strong market sentiment</p>
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-200 dark:border-green-700 rounded-xl p-4 flex items-start gap-3">
+                    <CheckCircle className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" size={24} />
+                    <p className="text-sm text-green-800 dark:text-green-300 font-semibold">GMP above 10% - Strong market sentiment</p>
                   </div>
                 ) : parseFloat(result.gmpData.gmpPercentage) >= 0 ? (
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2">
-                    <AlertCircle className="text-orange-600 flex-shrink-0 mt-0.5" size={20} />
-                    <p className="text-sm text-orange-800">GMP below 10% - Weak market sentiment</p>
+                  <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/30 dark:to-amber-900/30 border-2 border-orange-200 dark:border-orange-700 rounded-xl p-4 flex items-start gap-3">
+                    <AlertCircle className="text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" size={24} />
+                    <p className="text-sm text-orange-800 dark:text-orange-300 font-semibold">GMP below 10% - Weak market sentiment</p>
                   </div>
                 ) : (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
-                    <TrendingDown className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                    <p className="text-sm text-red-800">Negative GMP - Trading at discount</p>
+                  <div className="bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-900/30 dark:to-rose-900/30 border-2 border-red-200 dark:border-red-700 rounded-xl p-4 flex items-start gap-3">
+                    <TrendingDown className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" size={24} />
+                    <p className="text-sm text-red-800 dark:text-red-300 font-semibold">Negative GMP - Trading at discount</p>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="text-xl font-semibold text-gray-800 mb-4">DRHP Analysis</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700 animate-fade-in">
+              <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6 flex items-center gap-2">
+                <div className="h-1 w-1 rounded-full bg-indigo-600 dark:bg-indigo-400"></div>
+                DRHP Analysis
+              </h3>
               <div className="grid grid-cols-2 gap-4">
                 {Object.entries(result.drhpAnalysis).map(([key, value]) => (
-                  <div key={key} className="border border-gray-200 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 mb-1 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                    <p className="text-lg font-medium text-gray-800">{value}</p>
+                  <div key={key} className="border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-lg transition-all duration-300 hover:scale-105 bg-gray-50 dark:bg-gray-700/50">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 capitalize font-semibold uppercase tracking-wide">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                    <p className="text-lg font-bold text-gray-800 dark:text-gray-200">{value}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-4">
-                <h4 className="text-lg font-semibold text-gray-800 mb-2">Why this verdict?</h4>
-                <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+              <div className="mt-6">
+                <h4 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+                  <div className="h-1 w-1 rounded-full bg-indigo-600 dark:bg-indigo-400"></div>
+                  Why this verdict?
+                </h4>
+                <ul className="list-disc pl-6 text-sm text-gray-700 dark:text-gray-300 space-y-2">
                   {result.reasons.map((r, i) => (
-                    <li key={i}>{r}</li>
+                    <li key={i} className="leading-relaxed">{r}</li>
                   ))}
                 </ul>
               </div>
             </div>
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-sm text-yellow-800">
-                <strong>Disclaimer:</strong> This analysis is for informational purposes only. GMP data is from unofficial grey market sources and is subject to high volatility. 
+            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/30 dark:to-amber-900/30 border-2 border-yellow-200 dark:border-yellow-700 rounded-xl p-5">
+              <p className="text-sm text-yellow-800 dark:text-yellow-300 leading-relaxed">
+                <strong className="font-bold">Disclaimer:</strong> This analysis is for informational purposes only. GMP data is from unofficial grey market sources and is subject to high volatility. 
                 Please conduct your own research and consult with a SEBI-registered financial advisor before making investment decisions.
               </p>
             </div>

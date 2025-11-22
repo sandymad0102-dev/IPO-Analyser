@@ -1,0 +1,39 @@
+========================================
+READY TO RUN - EXECUTE THESE COMMANDS
+========================================
+
+Since Node.js was just installed, you need a fresh terminal session.
+
+OPTION 1: Use the ready-made script (EASIEST)
+----------------------------------------------
+1. Close this terminal
+2. Open a NEW terminal/PowerShell
+3. Navigate here: cd "C:\Users\Admin\OneDrive\Desktop\RVCE25BCS817\IPO"
+4. Run: .\run-app.bat
+   (This will install dependencies and start the app automatically)
+
+OPTION 2: Manual commands
+-------------------------
+1. Close this terminal
+2. Open a NEW terminal/PowerShell  
+3. Navigate here: cd "C:\Users\Admin\OneDrive\Desktop\RVCE25BCS817\IPO"
+4. Run: npm install
+5. Run: npm run dev
+
+========================================
+WHAT WILL HAPPEN:
+- Dependencies will be installed (first time only, takes 1-2 minutes)
+- Development server will start
+- App will open at: http://localhost:5173
+- App runs in DEMO MODE with mock data (no backend needed)
+
+========================================
+TROUBLESHOOTING:
+If "npm is not recognized" after restarting:
+- Verify Node.js installation: node --version
+- If that fails, Node.js may not be properly installed
+- Reinstall Node.js from https://nodejs.org/
+- Make sure "Add to PATH" is checked during installation
+
+========================================
+

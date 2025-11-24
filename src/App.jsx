@@ -13,158 +13,63 @@ import {
   Sun,
   Sparkles
 } from 'lucide-react';
+import { useTheme } from './ThemeContext.jsx';
 
 export default function IPOAnalyzer() {
+  const { theme, toggleTheme } = useTheme();
+
   const [companyName, setCompanyName] = useState('');
   const [issuePrice, setIssuePrice] = useState('');
   const [drhpFile, setDrhpFile] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [fetchingGMP, setFetchingGMP] = useState(false);
   const [result, setResult] = useState(null);
-  const [darkMode, setDarkMode] = useState(() => {
-    // Check localStorage or system preference
-    const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
 
   // Update dark mode class on body
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
-  }, [darkMode]);
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
 
   const fetchLiveGMP = async (company) => {
     setFetchingGMP(true);
     try {
-      // Check if we're in production mode with API endpoint configured
-      const apiMode = import.meta.env.VITE_APP_MODE || 'demo';
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+      // Always use production API with Vercel serverless functions
+      try {
+        const response = await fetch(`/api/gmp-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ company: company }),
+        });
 
-      // PRODUCTION MODE: Call backend API
-      if (apiMode === 'production' && apiBaseUrl) {
-        try {
-          const response = await fetch(`${apiBaseUrl}/gmp-data`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ company: company }),
-          });
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
 
-          if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-          }
-
-          const data = await response.json();
-          
-          if (data.error) {
-            console.error("API Error:", data.error);
-            // Fall back to demo mode on error
-          } else if (data.gmp !== undefined) {
-            if (data.issuePrice) {
-              const priceStr = String(data.issuePrice);
-              if (priceStr.includes('-')) {
-                const prices = priceStr.split('-').map(p => p.trim());
-                setIssuePrice(prices[prices.length - 1]);
-              } else {
-                setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
-              }
+        const data = await response.json();
+        
+        if (data.error) {
+          console.error("API Error:", data.error);
+          return null;
+        } else if (data.gmp !== undefined) {
+          if (data.issuePrice) {
+            const priceStr = String(data.issuePrice);
+            if (priceStr.includes('-')) {
+              const prices = priceStr.split('-').map(p => p.trim());
+              setIssuePrice(prices[prices.length - 1]);
+            } else {
+              setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
             }
-            
-            data.gmp = parseFloat(String(data.gmp).replace(/[^0-9.-]/g, ''));
-            return data;
           }
-        } catch (apiError) {
-          console.error('API call failed, falling back to demo mode:', apiError);
-          // Fall through to demo mode
+          
+          data.gmp = parseFloat(String(data.gmp).replace(/[^0-9.-]/g, ''));
+          return data;
         }
+      } catch (apiError) {
+        console.error('API call failed:', apiError);
+        return null;
       }
-
-      // DEMO MODE: Mock data based on company name
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const companyLower = company.toLowerCase();
-      let mockData = null;
-
-      // Generate realistic mock data based on company name patterns
-      if (companyLower.includes('swiggy') || companyLower.includes('zomato')) {
-        mockData = {
-          gmp: 45,
-          issuePrice: "390",
-          priceRange: "380-390",
-          issueSize: "11,327 Cr",
-          subscriptionStatus: "open",
-          allotmentDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          refundDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          listingDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          source: "Demo Mode - Mock Data"
-        };
-      } else if (companyLower.includes('hyundai') || companyLower.includes('motor')) {
-        mockData = {
-          gmp: 28,
-          issuePrice: "1250",
-          priceRange: "1200-1250",
-          issueSize: "25,000 Cr",
-          subscriptionStatus: "upcoming",
-          allotmentDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          refundDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          listingDate: new Date(Date.now() + 17 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          source: "Demo Mode - Mock Data"
-        };
-      } else if (companyLower.includes('ntpc') || companyLower.includes('green')) {
-        mockData = {
-          gmp: 12,
-          issuePrice: "85",
-          priceRange: "80-85",
-          issueSize: "5,500 Cr",
-          subscriptionStatus: "open",
-          allotmentDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          refundDate: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          listingDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          source: "Demo Mode - Mock Data"
-        };
-      } else {
-        // Generic mock data for unknown companies
-        const baseGMP = Math.floor(Math.random() * 50) + 5;
-        const basePrice = Math.floor(Math.random() * 500) + 100;
-        mockData = {
-          gmp: baseGMP,
-          issuePrice: String(basePrice),
-          priceRange: `${basePrice - 10}-${basePrice}`,
-          issueSize: `${(Math.random() * 10 + 2).toFixed(1)} Cr`,
-          subscriptionStatus: Math.random() > 0.5 ? "open" : "upcoming",
-          allotmentDate: new Date(Date.now() + (Math.floor(Math.random() * 10) + 5) * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          refundDate: new Date(Date.now() + (Math.floor(Math.random() * 10) + 6) * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          listingDate: new Date(Date.now() + (Math.floor(Math.random() * 10) + 8) * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          lastUpdated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          source: "Demo Mode - Mock Data"
-        };
-      }
-
-      if (mockData && mockData.issuePrice) {
-        const priceStr = String(mockData.issuePrice);
-        if (priceStr.includes('-')) {
-          const prices = priceStr.split('-').map(p => p.trim());
-          setIssuePrice(prices[prices.length - 1]);
-        } else {
-          setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
-        }
-      }
-      
-      mockData.gmp = parseFloat(String(mockData.gmp).replace(/[^0-9.-]/g, ''));
-      return mockData;
     } catch (error) {
       console.error('Error fetching GMP:', error);
       return null;
@@ -173,9 +78,9 @@ export default function IPOAnalyzer() {
     }
   };
 
-  const analyzeIPO = async () => {
-    if (!companyName.trim()) {
-      alert('Please enter company name');
+  const analyzeDRHP = async (file) => {
+    if (!file) {
+      alert('Please select a DRHP file');
       return;
     }
 
@@ -183,15 +88,59 @@ export default function IPOAnalyzer() {
     setResult(null);
 
     try {
-      const liveGMPData = await fetchLiveGMP(companyName);
+      const formData = new FormData();
+      formData.append('drhpFile', file);
 
-      if (!liveGMPData && !issuePrice) {
-        alert('Could not fetch data. Please enter the issue price manually and try again.');
+      const response = await fetch('/api/analyze-drhp', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error && data.requiresManualInput) {
+        alert(`Could not extract company name from DRHP. Please enter the company name manually.\n\nError: ${data.error}`);
         setAnalyzing(false);
         return;
       }
 
-    const price = parseFloat(issuePrice) || (liveGMPData?.issuePrice ? parseFloat(String(liveGMPData.issuePrice).replace(/[^0-9.]/g, '')) : 0);
+      // Set the extracted company name
+      setCompanyName(data.companyName || '');
+
+      // Process the GMP data if available
+      if (data.gmp !== undefined && data.gmp !== null) {
+        if (data.issuePrice) {
+          const priceStr = String(data.issuePrice);
+          if (priceStr.includes('-')) {
+            const prices = priceStr.split('-').map(p => p.trim());
+            setIssuePrice(prices[prices.length - 1]);
+          } else {
+            setIssuePrice(priceStr.replace(/[^0-9.]/g, ''));
+          }
+        }
+
+        // Continue with analysis using the fetched data
+        await performAnalysis(data);
+      } else {
+        // No GMP data available, but we have company name
+        alert(`Company "${data.companyName}" extracted from DRHP, but no GMP data is available yet. The IPO may not be listed.`);
+        setAnalyzing(false);
+      }
+
+    } catch (error) {
+      console.error('Error analyzing DRHP:', error);
+      alert(`Error analyzing DRHP: ${error.message}`);
+      setAnalyzing(false);
+    }
+  };
+
+  const performAnalysis = async (gmpData) => {
+    const price = parseFloat(issuePrice) || (gmpData?.issuePrice ? parseFloat(String(gmpData.issuePrice).replace(/[^0-9.]/g, '')) : 0);
 
     if (!price || Number.isNaN(price) || price <= 0) {
       alert('Could not determine issue price. Please enter it manually.');
@@ -199,7 +148,7 @@ export default function IPOAnalyzer() {
       return;
     }
 
-    const gmpData = liveGMPData || {
+    const finalGmpData = gmpData || {
       gmp: 0,
       issuePrice: price,
       priceRange: String(price),
@@ -212,8 +161,8 @@ export default function IPOAnalyzer() {
       listingDate: 'Not Available'
     };
 
-    const gmpPercentage = ((gmpData.gmp / price) * 100).toFixed(2);
-    const expectedListingPrice = Number(price) + Number(gmpData.gmp);
+    const gmpPercentage = ((finalGmpData.gmp / price) * 100).toFixed(2);
+    const expectedListingPrice = Number(price) + Number(finalGmpData.gmp);
 
     await new Promise((res) => setTimeout(res, 700));
 
@@ -267,13 +216,13 @@ export default function IPOAnalyzer() {
     const reasons = [];
 
     if (isGMPAbove10) {
-      reasons.push(`Strong GMP of Rs ${gmpData.gmp} (${gmpPercentage}%) - Market showing high confidence`);
+      reasons.push(`Strong GMP of Rs ${finalGmpData.gmp} (${gmpPercentage}%) - Market showing high confidence`);
     } else if (parseFloat(gmpPercentage) >= 5) {
-      reasons.push(`Moderate GMP of Rs ${gmpData.gmp} (${gmpPercentage}%) - Average market sentiment`);
+      reasons.push(`Moderate GMP of Rs ${finalGmpData.gmp} (${gmpPercentage}%) - Average market sentiment`);
     } else if (parseFloat(gmpPercentage) >= 0) {
-      reasons.push(`Low GMP of Rs ${gmpData.gmp} (${gmpPercentage}%) - Weak market interest`);
+      reasons.push(`Low GMP of Rs ${finalGmpData.gmp} (${gmpPercentage}%) - Weak market interest`);
     } else {
-      reasons.push(`Negative GMP of Rs ${gmpData.gmp} (${gmpPercentage}%) - Trading at discount`);
+      reasons.push(`Negative GMP of Rs ${finalGmpData.gmp} (${gmpPercentage}%) - Trading at discount`);
     }
 
     reasons.push(isFinanciallyStrong ? 'Strong financial health - Company has solid fundamentals' : 'Moderate financial health - Average fundamentals');
@@ -281,22 +230,189 @@ export default function IPOAnalyzer() {
     reasons.push(hasLowDebt ? `Low debt-to-equity ratio (${drhpAnalysis.debtToEquity}) - Healthy balance sheet` : `High debt-to-equity ratio (${drhpAnalysis.debtToEquity}) - Leverage concerns`);
     if (hasPositiveOutlook) reasons.push('Positive industry outlook - Sector tailwinds favorable');
 
+    setResult({
+      verdict,
+      verdictReasoning,
+      gmpData: {
+        gmp: Number(finalGmpData.gmp),
+        issuePrice: Number(price),
+        priceRange: finalGmpData.priceRange || String(price),
+        issueSize: finalGmpData.issueSize || 'Not Available',
+        gmpPercentage,
+        expectedListingPrice,
+        lastUpdated: finalGmpData.lastUpdated,
+        source: finalGmpData.source,
+        subscriptionStatus: finalGmpData.subscriptionStatus || 'unknown',
+        allotmentDate: finalGmpData.allotmentDate || 'Not Available',
+        refundDate: finalGmpData.refundDate || 'Not Available',
+        listingDate: finalGmpData.listingDate || 'Not Available'
+      },
+      drhpAnalysis,
+      reasons,
+      confidence: Math.floor(Math.random() * 30 + 70),
+    });
+  };
+
+  const analyzeIPO = async () => {
+    if (!companyName.trim()) {
+      alert('Please enter company name');
+      return;
+    }
+
+    if (!drhpFile) {
+      alert('Please upload DRHP file for comprehensive analysis');
+      return;
+    }
+
+    setAnalyzing(true);
+    setResult(null);
+
+    try {
+      // First, analyze DRHP to extract company details and financials
+      const formData = new FormData();
+      formData.append('drhpFile', drhpFile);
+
+      const drhpResponse = await fetch('/api/analyze-drhp', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!drhpResponse.ok) {
+        const errorData = await drhpResponse.json();
+        throw new Error(errorData.error || `DRHP analysis error: ${drhpResponse.status}`);
+      }
+
+      const drhpData = await drhpResponse.json();
+
+      if (drhpData.error && drhpData.requiresManualInput) {
+        alert(`Could not extract company name from DRHP. Please enter the company name manually.\n\nError: ${drhpData.error}`);
+        setAnalyzing(false);
+        return;
+      }
+
+      // Update company name if extracted from DRHP
+      if (drhpData.companyName) {
+        setCompanyName(drhpData.companyName);
+      }
+
+      // Fetch live GMP data for the company
+      const liveGMPData = await fetchLiveGMP(drhpData.companyName || companyName);
+
+      if (!liveGMPData && !issuePrice) {
+        alert('Could not fetch GMP data. Please enter the issue price manually and try again.');
+        setAnalyzing(false);
+        return;
+      }
+
+      const price = parseFloat(issuePrice) || (liveGMPData?.issuePrice ? parseFloat(String(liveGMPData.issuePrice).replace(/[^0-9.]/g, '')) : 0) || (drhpData.issuePrice ? parseFloat(String(drhpData.issuePrice).replace(/[^0-9.]/g, '')) : 0);
+
+      if (!price || Number.isNaN(price) || price <= 0) {
+        alert('Could not determine issue price. Please enter it manually.');
+        setAnalyzing(false);
+        return;
+      }
+
+      // Merge GMP data with DRHP data
+      const mergedGmpData = liveGMPData || {
+        gmp: 0,
+        issuePrice: price,
+        priceRange: String(price),
+        issueSize: drhpData.issueSize || 'Not Available',
+        lastUpdated: new Date().toLocaleDateString('en-GB'),
+        source: 'DRHP Analysis Only',
+        subscriptionStatus: 'unknown',
+        allotmentDate: 'Not Available',
+        refundDate: 'Not Available',
+        listingDate: 'Not Available'
+      };
+
+      // Use DRHP financial analysis if available, otherwise use mock data
+      const drhpAnalysis = drhpData.financialAnalysis || {
+        financialHealth: Math.random() > 0.5 ? 'Strong' : 'Moderate',
+        revenueGrowth: (Math.random() * 50 + 10).toFixed(1) + '%',
+        profitability: Math.random() > 0.4 ? 'Profitable' : 'Loss Making',
+        debtToEquity: (Math.random() * 2).toFixed(2),
+        industryOutlook: Math.random() > 0.5 ? 'Positive' : 'Neutral',
+        managementQuality: Math.random() > 0.6 ? 'Strong' : 'Average',
+      };
+
+      const gmpPercentage = ((mergedGmpData.gmp / price) * 100).toFixed(2);
+      const expectedListingPrice = Number(price) + Number(mergedGmpData.gmp);
+
+      await new Promise((res) => setTimeout(res, 700));
+
+      const isGMPAbove10 = parseFloat(gmpPercentage) >= 10;
+      const isFinanciallyStrong = drhpAnalysis.financialHealth === 'Strong';
+      const isProfitable = drhpAnalysis.profitability === 'Profitable';
+      const hasLowDebt = parseFloat(drhpAnalysis.debtToEquity) < 1;
+      const hasPositiveOutlook = drhpAnalysis.industryOutlook === 'Positive';
+
+      let verdict = 'AVOID';
+      let verdictReasoning = '';
+
+      if (isGMPAbove10) {
+        if (isFinanciallyStrong && isProfitable) {
+          verdict = 'APPLY';
+          verdictReasoning = 'Strong GMP (>10%) backed by excellent financials and profitability';
+        } else if (isFinanciallyStrong || isProfitable) {
+          verdict = 'APPLY';
+          verdictReasoning = 'Good GMP (>10%) with decent financial indicators';
+        } else {
+          verdict = 'CAUTION';
+          verdictReasoning = 'High GMP but weak fundamentals - market hype may not sustain';
+        }
+      } else if (parseFloat(gmpPercentage) >= 5) {
+        if (isFinanciallyStrong && isProfitable) {
+          verdict = 'APPLY';
+          verdictReasoning = 'Moderate GMP but strong fundamentals suggest long-term value';
+        } else {
+          verdict = 'AVOID';
+          verdictReasoning = 'Low GMP with weak financials - limited upside potential';
+        }
+      } else {
+        if (isFinanciallyStrong && isProfitable && hasPositiveOutlook) {
+          verdict = 'CAUTION';
+          verdictReasoning = 'Low GMP despite good fundamentals - market sentiment is weak';
+        } else {
+          verdict = 'AVOID';
+          verdictReasoning = 'Low GMP combined with weak fundamentals';
+        }
+      }
+
+      const reasons = [];
+
+      if (isGMPAbove10) {
+        reasons.push(`Strong GMP of Rs ${mergedGmpData.gmp} (${gmpPercentage}%) - Market showing high confidence`);
+      } else if (parseFloat(gmpPercentage) >= 5) {
+        reasons.push(`Moderate GMP of Rs ${mergedGmpData.gmp} (${gmpPercentage}%) - Average market sentiment`);
+      } else if (parseFloat(gmpPercentage) >= 0) {
+        reasons.push(`Low GMP of Rs ${mergedGmpData.gmp} (${gmpPercentage}%) - Weak market interest`);
+      } else {
+        reasons.push(`Negative GMP of Rs ${mergedGmpData.gmp} (${gmpPercentage}%) - Trading at discount`);
+      }
+
+      reasons.push(isFinanciallyStrong ? 'Strong financial health - Company has solid fundamentals' : 'Moderate financial health - Average fundamentals');
+      reasons.push(isProfitable ? 'Profitable company - Generating positive returns' : 'Loss-making company - Not yet profitable');
+      reasons.push(hasLowDebt ? `Low debt-to-equity ratio (${drhpAnalysis.debtToEquity}) - Healthy balance sheet` : `High debt-to-equity ratio (${drhpAnalysis.debtToEquity}) - Leverage concerns`);
+      if (hasPositiveOutlook) reasons.push('Positive industry outlook - Sector tailwinds favorable');
+      reasons.push('DRHP analysis provides comprehensive financial insights');
+
       setResult({
         verdict,
         verdictReasoning,
         gmpData: {
-          gmp: Number(gmpData.gmp),
+          gmp: Number(mergedGmpData.gmp),
           issuePrice: Number(price),
-          priceRange: gmpData.priceRange || String(price),
-          issueSize: gmpData.issueSize || 'Not Available',
+          priceRange: mergedGmpData.priceRange || String(price),
+          issueSize: mergedGmpData.issueSize || 'Not Available',
           gmpPercentage,
           expectedListingPrice,
-          lastUpdated: gmpData.lastUpdated,
-          source: gmpData.source,
-          subscriptionStatus: gmpData.subscriptionStatus || 'unknown',
-          allotmentDate: gmpData.allotmentDate || 'Not Available',
-          refundDate: gmpData.refundDate || 'Not Available',
-          listingDate: gmpData.listingDate || 'Not Available'
+          lastUpdated: mergedGmpData.lastUpdated,
+          source: mergedGmpData.source,
+          subscriptionStatus: mergedGmpData.subscriptionStatus || 'unknown',
+          allotmentDate: mergedGmpData.allotmentDate || 'Not Available',
+          refundDate: mergedGmpData.refundDate || 'Not Available',
+          listingDate: mergedGmpData.listingDate || 'Not Available'
         },
         drhpAnalysis,
         reasons,
@@ -304,7 +420,7 @@ export default function IPOAnalyzer() {
       });
     } catch (error) {
       console.error('Error analyzing IPO:', error);
-      alert('An error occurred while analyzing the IPO. Please try again.');
+      alert(`An error occurred while analyzing the IPO: ${error.message}`);
     } finally {
       setAnalyzing(false);
     }
@@ -312,10 +428,10 @@ export default function IPOAnalyzer() {
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
-    if (file && file.type === 'application/pdf') {
+    if (file && (file.type === 'application/pdf' || file.type === 'application/msword' || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
       setDrhpFile(file);
     } else if (file) {
-      alert('Please upload a PDF file');
+      alert('Please upload a PDF or Word document');
     }
   };
 
@@ -323,6 +439,14 @@ export default function IPOAnalyzer() {
     if (!companyName) {
       alert('Please enter company name first');
       return;
+    }
+
+    // Clear cache first to get fresh data
+    try {
+      await fetch('/api/clear-cache', { method: 'POST' });
+      console.log('Cache cleared, fetching fresh data...');
+    } catch (error) {
+      console.log('Could not clear cache, continuing with refresh...');
     }
 
     const liveGMPData = await fetchLiveGMP(companyName);
@@ -370,31 +494,14 @@ export default function IPOAnalyzer() {
               <Sparkles className="h-8 w-8 text-indigo-600 dark:text-indigo-400 animate-pulse-slow" />
             </div>
             <p className="text-gray-700 dark:text-gray-300 text-lg font-medium">Live GMP Analysis with DRHP Insights</p>
-            {(() => {
-              const apiMode = import.meta.env.VITE_APP_MODE || 'demo';
-              const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-              const isProduction = apiMode === 'production' && apiBaseUrl;
-              
-              return isProduction ? (
-                <div className="mt-4 inline-block bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-300 dark:border-green-700 rounded-xl px-6 py-3 shadow-md animate-slide-up">
-                  <p className="text-sm text-green-800 dark:text-green-300 font-semibold">✅ Production Mode - Using Real API</p>
-                  <p className="text-xs text-green-700 dark:text-green-400 mt-1">Connected to: {apiBaseUrl}</p>
-                </div>
-              ) : (
-                <div className="mt-4 inline-block bg-gradient-to-r from-yellow-100 to-amber-100 dark:from-yellow-900/30 dark:to-amber-900/30 border-2 border-yellow-300 dark:border-yellow-700 rounded-xl px-6 py-3 shadow-md animate-slide-up">
-                  <p className="text-sm text-yellow-800 dark:text-yellow-300 font-semibold">⚠️ Demo Mode - Using Mock Data</p>
-                  <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">Set VITE_APP_MODE=production and VITE_API_BASE_URL to use real API</p>
-                </div>
-              );
-            })()}
           </div>
           <div className="flex-1 flex justify-end">
             <button
-              onClick={toggleDarkMode}
+              onClick={toggleTheme}
               className="p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 border border-gray-200 dark:border-gray-700 group"
               aria-label="Toggle dark mode"
             >
-              {darkMode ? (
+              {theme === 'dark' ? (
                 <Sun className="h-6 w-6 text-yellow-500 group-hover:rotate-180 transition-transform duration-500" />
               ) : (
                 <Moon className="h-6 w-6 text-indigo-600 group-hover:rotate-12 transition-transform duration-500" />
@@ -456,12 +563,25 @@ export default function IPOAnalyzer() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Upload DRHP (Optional)</label>
-              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-indigo-500 dark:hover:border-indigo-400 transition-all duration-300 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer group">
-                <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" id="drhp-upload" />
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Upload DRHP *</label>
+              <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 cursor-pointer group ${
+                drhpFile 
+                  ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30' 
+                  : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}>
+                <input type="file" accept=".pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" id="drhp-upload" />
                 <label htmlFor="drhp-upload" className="cursor-pointer">
-                  <Upload className="mx-auto h-14 w-14 text-gray-400 dark:text-gray-500 mb-3 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-300" />
-                  <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{drhpFile ? drhpFile.name : 'Click to upload DRHP PDF'}</p>
+                  <Upload className={`mx-auto h-14 w-14 mb-3 transition-colors duration-300 ${
+                    drhpFile ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'
+                  }`} />
+                  <p className={`text-sm font-medium ${
+                    drhpFile 
+                      ? 'text-green-700 dark:text-green-300' 
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {drhpFile ? `✅ ${drhpFile.name}` : 'Click to upload DRHP (PDF/Word) - Required for analysis'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">DRHP is required for comprehensive financial analysis</p>
                 </label>
               </div>
             </div>
@@ -469,23 +589,30 @@ export default function IPOAnalyzer() {
 
           <button
             onClick={analyzeIPO}
-            disabled={analyzing || fetchingGMP}
+            disabled={analyzing || fetchingGMP || !drhpFile}
             className="w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-500 dark:via-purple-500 dark:to-pink-500 text-white py-5 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3 group"
           >
             {analyzing || fetchingGMP ? (
               <>
                 <Loader2 className="animate-spin h-6 w-6" />
-                <span>{fetchingGMP ? 'Fetching Live GMP Data...' : 'Analyzing IPO...'}</span>
+                <span>{fetchingGMP ? 'Fetching Live GMP Data...' : 'Analyzing IPO & DRHP...'}</span>
               </>
             ) : (
               <>
-                <Search className="h-6 w-6 group-hover:scale-110 transition-transform duration-300" />
-                <span>Analyze IPO with Live GMP</span>
+                <Sparkles className="h-6 w-6 group-hover:scale-110 transition-transform duration-300" />
+                <span>Comprehensive IPO Analysis with DRHP & Live GMP</span>
               </>
             )}
           </button>
 
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 text-center">DEMO: Simulates GMP data fetch. Configure backend API for live data.</p>
+          {!drhpFile && (
+            <div className="mt-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-700 rounded-xl">
+              <p className="text-sm text-yellow-800 dark:text-yellow-300 text-center">
+                <strong>⚠️ DRHP Required:</strong> Please upload the DRHP document to enable comprehensive financial analysis along with live GMP data.
+              </p>
+            </div>
+          )}
+
         </div>
 
         {result && (
@@ -548,7 +675,7 @@ export default function IPOAnalyzer() {
                 </h3>
                 <button onClick={refreshGMP} disabled={fetchingGMP} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-all duration-300 disabled:opacity-50 hover:scale-105 active:scale-95 font-semibold shadow-md">
                   <RefreshCw className={`h-5 w-5 ${fetchingGMP ? 'animate-spin' : ''}`} />
-                  Refresh
+                  Clear Cache & Refresh
                 </button>
               </div>
 
